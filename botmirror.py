@@ -74,7 +74,7 @@ def calculate_similarity(
     )
 
 
-def format_selected_text(df_filt: pl.DataFrame, content_hash: str) -> pl.DataFrame:
+def get_template_df(df_filt: pl.DataFrame, content_hash: str) -> pl.DataFrame:
     """Format selected text with dates for display."""
     return (
         df_filt.filter(pl.col("content_hash") == content_hash)
