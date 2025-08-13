@@ -55,7 +55,7 @@ def get_reference_text(df_filt: pl.DataFrame, content_hash: str) -> str:
     ).to_series()[0][0]
 
 
-def calculate_similarity(
+def calculate_similarities(
     df: pl.DataFrame, reference_text: str, exclude_hash: str
 ) -> pl.DataFrame:
     """Calculate similarity scores against reference text."""
