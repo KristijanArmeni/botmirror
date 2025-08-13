@@ -10,23 +10,23 @@ def _():
     import marimo as mo
     import polars as pl
     from data import fetch_comments_df
+    import plotly.express as px
     from detector import (
         get_duplicate_groups,
         create_choices_dict,
         get_reference_text,
         calculate_similarity,
-        format_selected_text,
     )
 
     return (
+        calculate_similarity,
+        create_choices_dict,
         fetch_comments_df,
+        get_duplicate_groups,
+        get_reference_text,
         mo,
         pl,
-        get_duplicate_groups,
-        create_choices_dict,
-        get_reference_text,
-        calculate_similarity,
-        format_selected_text,
+        px,
     )
 
 
@@ -94,7 +94,7 @@ def _(df, get_duplicate_groups):
 
 
 @app.cell
-def _(df_filt, create_choices_dict):
+def _(create_choices_dict, df_filt):
     choices_dict = create_choices_dict(df_filt)
     return (choices_dict,)
 
@@ -128,19 +128,19 @@ def _(dropdown_dict, mo):
 
 
 @app.cell
-def _(df_filt, dropdown_dict, format_selected_text):
-    sel_text = format_selected_text(df_filt, dropdown_dict.selected_key)
-    return (sel_text,)
+def _(df_filt, px):
+    px.line(data_frame=df_filt, x="content_hash", y="len")
+    return
 
 
 @app.cell
-def _(mo, sel_text):
-    sel_rows = [
-        f"DATE:{row['modify_date']}\nTEXT:{row['comment']}"
-        for row in sel_text.iter_rows(named=True)
-    ]
-    text = "\n\n====\n\n".join(sel_rows[0:100])
-    mo.ui.text_area(value=text, rows=100)
+def _(template_df):
+    template_df
+    return
+
+
+@app.cell
+def _():
     return
 
 
@@ -157,7 +157,7 @@ def _(df_filt, dropdown_dict, get_reference_text):
 
 
 @app.cell
-def _(df, dropdown_dict, reference_text, calculate_similarity):
+def _(calculate_similarity, df, dropdown_dict, reference_text):
     df_sim = calculate_similarity(df, reference_text, dropdown_dict.selected_key)
     return (df_sim,)
 
