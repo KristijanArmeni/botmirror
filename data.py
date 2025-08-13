@@ -12,6 +12,37 @@ MIRRULATIONS_PARQUET = dotenv_values()["MIRRULATIONS_PARQUET_HIVE"]
 console = Console()
 
 
+def get_unique_docket_ids(agency_codes: list[str] = [], years: list[int] = []) -> list:
+    lf = pl.scan_parquet(MIRRULATIONS_PARQUET, hive_partitioning=True)
+
+    if agency_codes:
+        lf = lf.filter(pl.col("agency_code").is_in(agency_codes))
+    if years:
+        lf = lf.filter(pl.col("year").is_in(years))
+
+    df = lf.select(["docket_id", "agency_code", "year"]).collect()
+
+    docket_ids = (df.select(pl.col("docket_id").unique()).sort(by="docket_id"))[
+        "docket_id"
+    ].to_list()
+
+    if not agency_codes:
+        agency_codes_out = (
+            df.select(pl.col("agency_code").unique()).sort(by="agency_code")
+        )["agency_code"].to_list()
+    else:
+        agency_codes_out = agency_codes
+
+    if not years:
+        years_out = (df.select(pl.col("year").unique()).sort(by="year"))[
+            "year"
+        ].to_list()
+    else:
+        years_out = years
+
+    return docket_ids, agency_codes_out, years_out
+
+
 def load_data_json_attributes(json_fname: str) -> dict:
     """Load json and grab 'attributes' field"""
     with open(json_fname) as fh:
@@ -67,7 +98,6 @@ def fetch_comments_df(docket_id: str, is_parquet=True):
         try:
             df = pl.DataFrame(data_json, infer_schema_length=None)
             # Drop columns that are entirely null
-            cols_to_keep = [col for col in df.columns if not df[col].is_null().all()]
 
         except pl.ComputeError as e:
             print(f"Schema error: {e}")
@@ -87,8 +117,8 @@ def fetch_comments_df(docket_id: str, is_parquet=True):
     df = load_mirrulations_parquet(docket_id=docket_id)
 
     # Drop columns that are entirely null
-    cols_to_keep = [col for col in df.columns if not df[col].is_null().all()]
-    df = df.select(cols_to_keep)
+    # cols_to_keep = [col for col in df.columns if not df[col].is_null().all()]
+    # df = df.select(cols_to_keep)
 
     TIME_COLUMNS = ["modifyDate", "receiveDate", "postedDate"]
 
