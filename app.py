@@ -199,6 +199,7 @@ def server(input, output, session):
         return f"{len(duplicates_df):,}"
 
     clicked_bar = reactive.value(None)
+    clicked_line = reactive.value(None)
     similarity_results = reactive.value(None)
     last_button_count = reactive.value(0)
 
@@ -290,6 +291,30 @@ def server(input, output, session):
 
             return fig_widget
 
+    def on_line_click(trace, points, state):
+        # Store both points and trace for accessing customdata
+        clicked_data = {"points": points, "trace": trace}
+        clicked_line.set(clicked_data)
+
+        # Get the parent figure widget from the trace
+        fig_widget = trace.parent
+
+        # Only modify if this is the duplicates plot (check trace name or other identifier)
+        if len(fig_widget.data):
+            fig_widget = clear_markers(
+                fig_widget=fig_widget, marker_color="red", marker_type="scatter"
+            )
+
+            # Add new red marker at clicked point
+            fig_widget.add_scatter(
+                x=[points.xs[0]],
+                y=[points.ys[0]],
+                mode="markers",
+                marker=dict(size=8, color="red"),
+                hoverinfo="skip",  # Disable hover for this marker
+                showlegend=False,
+            )
+
     @render_widget
     def similarity_plot():
         similarity_df = similarity_results.get()
@@ -333,6 +358,7 @@ def server(input, output, session):
         )
 
         fig_widget = go.FigureWidget(fig.data, fig.layout)
+        fig_widget.data[0].on_click(on_line_click)
 
         return fig_widget
 
