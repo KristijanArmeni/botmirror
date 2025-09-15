@@ -202,6 +202,24 @@ def server(input, output, session):
     similarity_results = reactive.value(None)
     last_button_count = reactive.value(0)
 
+    def clear_markers(fig_widget, marker_color, marker_type):
+        # Remove existing red bar traces
+        traces_to_remove = []
+        for i, existing_trace in enumerate(fig_widget.data):
+            if (
+                hasattr(existing_trace, "marker")
+                and hasattr(existing_trace.marker, "color")
+                and existing_trace.marker.color == marker_color
+                and existing_trace.type == marker_type
+            ):
+                traces_to_remove.append(i)
+
+        # Remove old red bars in reverse order
+        for i in reversed(traces_to_remove):
+            fig_widget.data = fig_widget.data[:i] + fig_widget.data[i + 1 :]
+
+        return fig_widget
+
     def on_bar_click(trace, points, state):
         # Store both points and trace for accessing customdata
         clicked_data = {"points": points, "trace": trace}
@@ -212,20 +230,9 @@ def server(input, output, session):
 
         # Only modify if this is the duplicates plot (check trace name or other identifier)
         if len(fig_widget.data) > 0 and hasattr(fig_widget.data[0], "customdata"):
-            # Remove existing red bar traces
-            traces_to_remove = []
-            for i, existing_trace in enumerate(fig_widget.data):
-                if (
-                    hasattr(existing_trace, "marker")
-                    and hasattr(existing_trace.marker, "color")
-                    and existing_trace.marker.color == "red"
-                    and existing_trace.type == "bar"
-                ):
-                    traces_to_remove.append(i)
-
-            # Remove old red bars in reverse order
-            for i in reversed(traces_to_remove):
-                fig_widget.data = fig_widget.data[:i] + fig_widget.data[i + 1 :]
+            fig_widget = clear_markers(
+                fig_widget=fig_widget, marker_color="red", marker_type="bar"
+            )
 
             # Add new red bar at clicked point with same height
             fig_widget.add_bar(
@@ -303,7 +310,7 @@ def server(input, output, session):
                 f"No comments in similarity range {min_sim}-{max_sim}"
             )
 
-        # Create x values for the bar plot
+        # Create x values for the line plot
         x_vals = np.arange(0, len(filtered_df)) + 1
 
         fig = px.line(
@@ -311,6 +318,7 @@ def server(input, output, session):
             x=x_vals,
             y="similarity",
             color_discrete_sequence=px.colors.qualitative.D3,
+            markers=True,
         )
 
         fig.update_traces(
