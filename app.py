@@ -108,6 +108,13 @@ main_pannel = ui.page_sidebar(
             step=1,
         ),
         output_widget(id="similarity_plot"),
+        ui.layout_columns(
+            ui.card(ui.card_header("Reference text"), ui.output_ui(id="ref_text")),
+            ui.card(
+                ui.card_header("Compared comment"),
+                ui.output_ui(id="compared_comment"),
+            ),
+        ),
     ),
 )
 
@@ -202,6 +209,8 @@ def server(input, output, session):
     clicked_line = reactive.value(None)
     similarity_results = reactive.value(None)
     last_button_count = reactive.value(0)
+    reference_text = reactive.value("")
+    compared_text = reactive.value("")
 
     def clear_markers(fig_widget, marker_color, marker_type):
         # Remove existing red bar traces
@@ -225,6 +234,11 @@ def server(input, output, session):
         # Store both points and trace for accessing customdata
         clicked_data = {"points": points, "trace": trace}
         clicked_bar.set(clicked_data)
+
+        # Extract and store reference text from customdata
+        point_index = points.point_inds[0]
+        ref_text = trace.customdata[point_index][0]
+        reference_text.set(ref_text)
 
         # Get the parent figure widget from the trace
         fig_widget = trace.parent
@@ -296,6 +310,11 @@ def server(input, output, session):
         clicked_data = {"points": points, "trace": trace}
         clicked_line.set(clicked_data)
 
+        # Extract and store compared text from customdata
+        point_index = points.point_inds[0]
+        comp_text = trace.customdata[point_index][0]
+        compared_text.set(comp_text)
+
         # Get the parent figure widget from the trace
         fig_widget = trace.parent
 
@@ -338,12 +357,16 @@ def server(input, output, session):
         # Create x values for the line plot
         x_vals = np.arange(0, len(filtered_df)) + 1
 
+        # Extract text content for customdata
+        compared_texts = filtered_df["comment"].to_list()
+
         fig = px.line(
             data_frame=filtered_df,
             x=x_vals,
             y="similarity",
             color_discrete_sequence=px.colors.qualitative.D3,
             markers=True,
+            custom_data=[compared_texts],
         )
 
         fig.update_traces(
@@ -372,6 +395,36 @@ def server(input, output, session):
             return "No comment selected"
 
         return f"Selected Comment ID: {comment_id} (nr. duplicates: {n_duplicates})"
+
+    @render.ui
+    def ref_text():
+        ref_text = reference_text.get()
+        if ref_text:
+            return ui.div(
+                ui.p(
+                    ref_text,
+                    style="white-space: pre-wrap; font-family: monospace; padding: 10px; background-color: #f8f9fa; border-radius: 5px; margin: 0;",
+                )
+            )
+        return ui.p(
+            "Click a bar in the duplicates plot to select reference text",
+            style="font-style: italic; color: #666;",
+        )
+
+    @render.ui
+    def compared_comment():
+        comp_text_value = compared_text.get()
+        if comp_text_value:
+            return ui.div(
+                ui.p(
+                    comp_text_value,
+                    style="white-space: pre-wrap; font-family: monospace; padding: 10px; background-color: #f8f9fa; border-radius: 5px; margin: 0;",
+                )
+            )
+        return ui.p(
+            "Click a point in the similarity plot to select compared text",
+            style="font-style: italic; color: #666;",
+        )
 
     # @render.data_frame
     # def preview():
