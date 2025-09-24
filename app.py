@@ -5,6 +5,7 @@ from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_widget
 import plotly.express as px
 from plotly import graph_objects as go
+import difflib
 from data import (
     get_unique_docket_ids,
     fetch_comments_df,
@@ -22,6 +23,94 @@ DEFAULT_AGENCIES = ["DEA"]
 
 df = None
 all_docket_labels, agency_codes, years = get_unique_docket_ids()
+
+
+def create_word_diff_html(text1, text2):
+    """Create HTML with word-level diff highlighting between two texts, highlighting whitespace changes."""
+    if not text1 or not text2:
+        return text1 or text2, text2 or text1
+
+    # Split text into tokens that preserve whitespace structure
+    import re
+
+    def tokenize_with_whitespace(text):
+        """Split text into tokens while preserving line breaks and spacing."""
+        # Split on whitespace but keep the whitespace as separate tokens
+        tokens = re.split(r"(\s+)", text)
+        return [token for token in tokens if token]  # Remove empty strings
+
+    tokens1 = tokenize_with_whitespace(text1)
+    tokens2 = tokenize_with_whitespace(text2)
+
+    matcher = difflib.SequenceMatcher(None, tokens1, tokens2)
+    opcodes = matcher.get_opcodes()
+
+    def highlight_whitespace(token, color):
+        """Highlight whitespace tokens to make them visible."""
+        if "\n" in token:
+            # Replace newlines with visible symbol and highlight
+            visible_token = token.replace("\n", "↵\n")
+            return f'<span style="background-color: {color}; padding: 0px 1px; border-radius: 2px; font-size: 0.8em;">{visible_token}</span>'
+        else:
+            # Regular spaces - make them visible with a subtle background
+            return f'<span style="background-color: {color}; padding: 0px 1px; border-radius: 2px;">{token}</span>'
+
+    def build_html_for_text1(tokens1, tokens2, opcodes):
+        html_parts = []
+        for tag, i1, i2, j1, j2 in opcodes:
+            segment_tokens = tokens1[i1:i2]
+
+            if tag == "equal":
+                # Matching tokens
+                for token in segment_tokens:
+                    if token.strip():  # Non-whitespace token
+                        html_parts.append(
+                            f'<span style="background-color: #d4edda; padding: 1px 2px; border-radius: 2px;">{token}</span>'
+                        )
+                    else:  # Whitespace token - show as matching
+                        html_parts.append(
+                            f'<span style="background-color: #d4edda; padding: 0px 1px; border-radius: 2px;">{token}</span>'
+                        )
+            elif tag in ["delete", "replace"]:
+                # Tokens only in first text
+                for token in segment_tokens:
+                    if token.strip():  # Non-whitespace token
+                        html_parts.append(
+                            f'<span style="background-color: #f8d7da; padding: 1px 2px; border-radius: 2px;">{token}</span>'
+                        )
+                    else:  # Whitespace token - highlight as deleted
+                        html_parts.append(highlight_whitespace(token, "#f8d7da"))
+        return "".join(html_parts)
+
+    def build_html_for_text2(tokens1, tokens2, opcodes):
+        html_parts = []
+        for tag, i1, i2, j1, j2 in opcodes:
+            if tag == "equal":
+                segment_tokens = tokens2[j1:j2]
+                for token in segment_tokens:
+                    if token.strip():  # Non-whitespace token
+                        html_parts.append(
+                            f'<span style="background-color: #d4edda; padding: 1px 2px; border-radius: 2px;">{token}</span>'
+                        )
+                    else:  # Whitespace token - show as matching
+                        html_parts.append(
+                            f'<span style="background-color: #d4edda; padding: 0px 1px; border-radius: 2px;">{token}</span>'
+                        )
+            elif tag in ["insert", "replace"]:
+                segment_tokens = tokens2[j1:j2]
+                for token in segment_tokens:
+                    if token.strip():  # Non-whitespace token
+                        html_parts.append(
+                            f'<span style="background-color: #d1ecf1; padding: 1px 2px; border-radius: 2px;">{token}</span>'
+                        )
+                    else:  # Whitespace token - highlight as inserted
+                        html_parts.append(highlight_whitespace(token, "#d1ecf1"))
+        return "".join(html_parts)
+
+    html1 = build_html_for_text1(tokens1, tokens2, opcodes)
+    html2 = build_html_for_text2(tokens1, tokens2, opcodes)
+
+    return html1, html2
 
 
 def _placeholder_fig(annotation_text: str = ""):
@@ -108,6 +197,26 @@ main_pannel = ui.page_sidebar(
             step=1,
         ),
         output_widget(id="similarity_plot"),
+        ui.div(
+            ui.p(
+                "Color legend: ",
+                ui.span(
+                    "Matching",
+                    style="background-color: #d4edda; padding: 2px 4px; margin: 0 4px; border-radius: 3px;",
+                ),
+                ui.span(
+                    "Reference only",
+                    style="background-color: #f8d7da; padding: 2px 4px; margin: 0 4px; border-radius: 3px;",
+                ),
+                ui.span(
+                    "Compared only",
+                    style="background-color: #d1ecf1; padding: 2px 4px; margin: 0 4px; border-radius: 3px;",
+                ),
+                " (includes words and whitespace/line breaks)",
+                style="font-size: 0.9em; margin-bottom: 10px; text-align: center;",
+            ),
+            style="margin-top: 10px;",
+        ),
         ui.layout_columns(
             ui.card(ui.card_header("Reference text"), ui.output_ui(id="ref_text")),
             ui.card(
@@ -148,9 +257,7 @@ def server(input, output, session):
                 content_hash = trace.customdata[point_index][1]
 
                 n_comments_to_compare = len(
-                    comments_df.filter(
-                        pl.col("content_hash") != content_hash, pl.col("is_duplicate")
-                    )
+                    comments_df.filter(pl.col("content_hash") != content_hash)
                 )
 
                 p.set(
@@ -398,14 +505,26 @@ def server(input, output, session):
 
     @render.ui
     def ref_text():
-        ref_text = reference_text.get()
-        if ref_text:
-            return ui.div(
-                ui.p(
-                    ref_text,
-                    style="white-space: pre-wrap; font-family: monospace; padding: 10px; background-color: #f8f9fa; border-radius: 5px; margin: 0;",
+        ref_text_value = reference_text.get()
+        comp_text_value = compared_text.get()
+
+        if ref_text_value:
+            if comp_text_value:
+                # Both texts available - show diff
+                diff_ref, _ = create_word_diff_html(ref_text_value, comp_text_value)
+                return ui.div(
+                    ui.HTML(
+                        f'<div style="white-space: pre-wrap; font-family: monospace; padding: 10px; background-color: #f8f9fa; border-radius: 5px; margin: 0; line-height: 1.6;">{diff_ref}</div>'
+                    )
                 )
-            )
+            else:
+                # Only reference text - show normally
+                return ui.div(
+                    ui.p(
+                        ref_text_value,
+                        style="white-space: pre-wrap; font-family: monospace; padding: 10px; background-color: #f8f9fa; border-radius: 5px; margin: 0;",
+                    )
+                )
         return ui.p(
             "Click a bar in the duplicates plot to select reference text",
             style="font-style: italic; color: #666;",
@@ -413,14 +532,26 @@ def server(input, output, session):
 
     @render.ui
     def compared_comment():
+        ref_text_value = reference_text.get()
         comp_text_value = compared_text.get()
+
         if comp_text_value:
-            return ui.div(
-                ui.p(
-                    comp_text_value,
-                    style="white-space: pre-wrap; font-family: monospace; padding: 10px; background-color: #f8f9fa; border-radius: 5px; margin: 0;",
+            if ref_text_value:
+                # Both texts available - show diff
+                _, diff_comp = create_word_diff_html(ref_text_value, comp_text_value)
+                return ui.div(
+                    ui.HTML(
+                        f'<div style="white-space: pre-wrap; font-family: monospace; padding: 10px; background-color: #f8f9fa; border-radius: 5px; margin: 0; line-height: 1.6;">{diff_comp}</div>'
+                    )
                 )
-            )
+            else:
+                # Only compared text - show normally
+                return ui.div(
+                    ui.p(
+                        comp_text_value,
+                        style="white-space: pre-wrap; font-family: monospace; padding: 10px; background-color: #f8f9fa; border-radius: 5px; margin: 0;",
+                    )
+                )
         return ui.p(
             "Click a point in the similarity plot to select compared text",
             style="font-style: italic; color: #666;",
