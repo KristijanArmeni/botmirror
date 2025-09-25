@@ -179,15 +179,17 @@ main_pannel = ui.page_sidebar(
         output_widget(id="duplicates_plot"),
     ),
     ui.br(),
-    ui.output_text(id="selected_docket"),
-    ui.input_action_button(
-        id="compute_similarity",
-        label="Find similar comments",
-    ),
-    ui.br(),
-    ui.br(),
     ui.card(
         ui.card_header("Similarity analysis"),
+        ui.output_text(id="selected_docket"),
+        ui.div(
+            ui.input_action_button(
+                id="compute_similarity",
+                label="Find similar comments",
+                style="width: 30%; max-width: 300px; min-width: 150px;",
+            ),
+            style="text-align: left; margin: 10px 0;",
+        ),
         ui.input_slider(
             id="similarity_range",
             label="Similarity Score Range",
