@@ -190,6 +190,16 @@ main_pannel = ui.page_sidebar(
             ),
             style="text-align: left; margin: 10px 0;",
         ),
+        ui.input_radio_buttons(
+            id="similarity_metric",
+            label="Similarity Metric",
+            choices={
+                "similarity_w": "Weighted (Recommended)",
+                "embedding_similarity": "Embedding (Semantic)",
+                "similarity": "String (Exact matches)",
+            },
+            selected="similarity_w",
+        ),
         ui.input_slider(
             id="similarity_range",
             label="Similarity Score Range",
@@ -295,6 +305,39 @@ def server(input, output, session):
             label="Select Docket ID",
             choices=docket_ids_new,
         )
+
+    @reactive.effect
+    def update_similarity_range():
+        """Update similarity range slider based on selected metric and available data."""
+        similarity_df = similarity_results.get()
+        selected_metric = input.similarity_metric()
+
+        if similarity_df is not None and not similarity_df.is_empty():
+            # Get the range of values for the selected metric
+            metric_values = similarity_df[selected_metric].to_list()
+            min_val = min(metric_values)
+            max_val = max(metric_values)
+
+            # Set intelligent defaults based on metric type
+            # All metrics are now on 0-100 scale after scaling fix
+            if selected_metric == "similarity":
+                # String similarity often has a wider range, start from 60
+                default_min = max(50, int(min_val))
+            elif selected_metric == "embedding_similarity":
+                # Embedding similarity (now scaled 0-100), start from 70
+                default_min = max(60, int(min_val))
+            else:  # similarity_w
+                # Weighted similarity balances both, start from 55
+                default_min = max(50, int(min_val))
+
+            # Update the slider with new range and default values
+            ui.update_slider(
+                id="similarity_range",
+                label=f"Similarity Score Range ({selected_metric.replace('_', ' ').title()})",
+                min=int(min_val),
+                max=int(max_val),
+                value=[default_min, int(max_val)],
+            )
 
     @render.ui
     def total_comments():
@@ -452,16 +495,29 @@ def server(input, output, session):
                 "No similarity data found. Click a bar and compute similarities."
             )
 
-        # Filter based on similarity range
+        # Get selected similarity metric
+        selected_metric = input.similarity_metric()
+
+        # Create metric display names for UI
+        metric_names = {
+            "similarity": "String Similarity",
+            "embedding_similarity": "Embedding Similarity",
+            "similarity_w": "Weighted Similarity",
+        }
+
+        # Filter based on similarity range using selected metric
         min_sim, max_sim = input.similarity_range()
         filtered_df = similarity_df.filter(
-            (pl.col("similarity") >= min_sim) & (pl.col("similarity") <= max_sim)
+            (pl.col(selected_metric) >= min_sim) & (pl.col(selected_metric) <= max_sim)
         )
 
         if filtered_df.is_empty():
             return _placeholder_fig(
-                f"No comments in similarity range {min_sim}-{max_sim}"
+                f"No comments in {metric_names[selected_metric]} range {min_sim}-{max_sim}"
             )
+
+        # Sort by selected metric for consistent ordering
+        filtered_df = filtered_df.sort(by=selected_metric, descending=True)
 
         # Create x values for the line plot
         x_vals = np.arange(0, len(filtered_df)) + 1
@@ -472,19 +528,19 @@ def server(input, output, session):
         fig = px.line(
             data_frame=filtered_df,
             x=x_vals,
-            y="similarity",
+            y=selected_metric,
             color_discrete_sequence=px.colors.qualitative.D3,
             markers=True,
             custom_data=[compared_texts],
         )
 
         fig.update_traces(
-            hovertemplate="<b>Comment ID:</b> %{x}<br><b>Similarity Score:</b>%{y}<extra></extra>"
+            hovertemplate=f"<b>Comment ID:</b> %{{x}}<br><b>{metric_names[selected_metric]}:</b> %{{y:.1f}}<extra></extra>"
         )
 
         fig.update_layout(
-            title="Similar Comments (sorted by similarity)",
-            yaxis_title="Similarity Score",
+            title=f"Similar Comments (sorted by {metric_names[selected_metric]})",
+            yaxis_title=f"{metric_names[selected_metric]} Score",
             xaxis_title="Comment Rank",
             template="plotly_white",
         )
