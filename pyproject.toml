@@ -18,4 +18,5 @@ dependencies = [
     "shinywidgets>=0.7.0",
     "pytest>=8.0.0",
     "pytest-mock>=3.12.0",
+    "sentence-transformers>=5.1.1",
 ]
